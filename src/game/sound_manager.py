@@ -36,6 +36,10 @@ class SoundManager:
         self.pause_sound = self.create_sound(PAUSE_SOUND_FREQ, PAUSE_SOUND_DURATION, volume=0.2)
         self.speed_up_sound = self.create_sound(SPEED_UP_SOUND_FREQ, SPEED_UP_SOUND_DURATION, volume=0.3)
         
+        # Bomb sound effects
+        self.bomb_place_sound = self.create_bomb_place_sound()
+        self.bomb_explosion_sound = self.create_bomb_explosion_sound()
+        
         # Create background music for different game phases
         if BACKGROUND_MUSIC_STYLE == "chiptune":
             self.background_music = self.create_chiptune_background_music()
@@ -762,10 +766,113 @@ class SoundManager:
             self.speed_up_sound.play()
             print("🔊 Playing speed up sound")
     
+    def create_bomb_place_sound(self):
+        """Create bomb placement sound effect"""
+        if not self.enabled or not self.initialized:
+            return None
+            
+        try:
+            sample_rate = 22050
+            duration = 300  # 0.3 seconds
+            samples = int(sample_rate * duration / 1000)
+            
+            t = np.linspace(0, duration / 1000, samples, False)
+            
+            # Create a metallic click sound with high frequency
+            base_freq = 800
+            wave = np.sin(2 * np.pi * base_freq * t)
+            wave += 0.5 * np.sin(2 * np.pi * base_freq * 2 * t)  # Second harmonic
+            wave += 0.3 * np.sin(2 * np.pi * base_freq * 3 * t)  # Third harmonic
+            
+            # Apply sharp envelope
+            envelope = np.exp(-t * 10)  # Quick decay
+            wave *= envelope
+            
+            # Add some noise for metallic texture
+            noise = 0.1 * (np.random.random(samples) - 0.5)
+            wave += noise
+            
+            wave = (wave * 32767 * 0.4).astype(np.int16)  # Lower volume
+            stereo_wave = np.column_stack([wave, wave])
+            
+            sound = pygame.sndarray.make_sound(stereo_wave)
+            return sound
+            
+        except Exception as e:
+            print(f"❌ Warning: Could not create bomb place sound: {e}")
+            return None
+    
+    def create_bomb_explosion_sound(self):
+        """Create bomb explosion sound effect"""
+        if not self.enabled or not self.initialized:
+            return None
+            
+        try:
+            sample_rate = 22050
+            duration = 800  # 0.8 seconds
+            samples = int(sample_rate * duration / 1000)
+            
+            t = np.linspace(0, duration / 1000, samples, False)
+            
+            # Create explosion sound with multiple components
+            explosion = np.zeros(samples)
+            
+            # Low frequency boom
+            boom_freq = 60
+            boom = 0.8 * np.sin(2 * np.pi * boom_freq * t)
+            boom *= np.exp(-t * 3)  # Slow decay
+            
+            # Mid-range explosion noise
+            noise_freq = 200
+            noise = 0.6 * np.sin(2 * np.pi * noise_freq * t)
+            noise *= np.exp(-t * 8)  # Medium decay
+            
+            # High frequency crackle
+            crackle_freq = 1200
+            crackle = 0.4 * np.sin(2 * np.pi * crackle_freq * t)
+            crackle *= np.exp(-t * 15)  # Fast decay
+            
+            # Combine all components
+            explosion = boom + noise + crackle
+            
+            # Add some random noise for realism
+            random_noise = 0.2 * (np.random.random(samples) - 0.5)
+            explosion += random_noise
+            
+            # Apply overall envelope
+            envelope = np.exp(-t * 4)
+            explosion *= envelope
+            
+            explosion = (explosion * 32767 * 0.6).astype(np.int16)
+            stereo_explosion = np.column_stack([explosion, explosion])
+            
+            sound = pygame.sndarray.make_sound(stereo_explosion)
+            return sound
+            
+        except Exception as e:
+            print(f"❌ Warning: Could not create bomb explosion sound: {e}")
+            return None
+    
+    def play_bomb_place_sound(self):
+        """Play bomb placement sound effect"""
+        if self.bomb_place_sound:
+            self.bomb_place_sound.play()
+            print("💣 Playing bomb place sound")
+    
+    def play_bomb_explosion_sound(self):
+        """Play bomb explosion sound effect"""
+        if self.bomb_explosion_sound:
+            self.bomb_explosion_sound.play()
+            print("💥 Playing bomb explosion sound")
+    
     def start_background_music(self):
         """Start playing background music in loop"""
         if self.background_music and BACKGROUND_MUSIC_ENABLED and self.enabled:
             try:
+                # Stop current music if playing
+                if self.music_channel and self.music_channel.get_busy():
+                    self.music_channel.stop()
+                
                 # Find an available channel for music
                 self.music_channel = pygame.mixer.find_channel()
                 if self.music_channel:

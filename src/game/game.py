@@ -7,7 +7,7 @@ import pygame
 import sys
 import math
 import os
-import sys
+import random
 
 # Add parent directory to Python path for relative imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
@@ -15,6 +15,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from .snake import Snake
 from .food import Food
 from .sound_manager import SoundManager
+from .bomb import Bomb
 from src.config.config import *
 from src.config.window_config import window_manager, create_game_window, toggle_fullscreen_mode, get_window_size
 
@@ -55,6 +56,14 @@ class SnakeGame:
         self.snake = None
         self.food = None
         self.score = 0
+        self.walls = []
+        self.bombs = []
+        self.particles = []
+        self.explosions = []
+        self.bombs_available = 3
+        self.bomb_cooldown = 0
+        self.max_bombs = 3
+        self.explosion_active = False
         
     def toggle_fullscreen(self):
         """Toggle between fullscreen and windowed mode using window manager"""
@@ -98,15 +107,27 @@ class SnakeGame:
     def start_game(self):
         """Start the game from menu"""
         self.reset_game()
+        self.game_state = GAME_RUNNING  # Set game state to running
         self.sound_manager.start_background_music()  # Start game music
         
     def reset_game(self):
-        """Reset game state"""
+        """Reset game to initial state"""
         self.snake = Snake(100, 100)
         self.food = Food()
         self.score = 0
-        self.game_state = GAME_RUNNING
-        self.food.respawn(self.snake.positions)
+        self.game_state = GAME_MENU
+        self.paused = False
+        
+        # Reset explosion effect
+        self.explosion_active = False
+        self.explosion_particles = []
+        self.explosion_timer = 0
+        self.explosion_duration = 60  # 1 second at 60 FPS
+        
+        # Reset bomb system
+        self.bombs = []
+        self.bomb_cooldown = 0
+        self.bombs_available = self.max_bombs
         
     def handle_events(self):
         """Handle game events with sound effects"""
@@ -136,6 +157,8 @@ class SnakeGame:
                         self.snake.change_direction((-1, 0))
                     elif event.key == pygame.K_RIGHT:
                         self.snake.change_direction((1, 0))
+                    elif event.key == pygame.K_b:
+                        self.place_bomb()
                     elif event.key == pygame.K_p:
                         self.game_state = GAME_PAUSED
                         self.sound_manager.play_pause_sound()
@@ -167,11 +190,20 @@ class SnakeGame:
             
             # Check collisions
             if self.snake.check_self_collision() or self.snake.check_wall_collision():
+                # Trigger explosion effect at snake head position
+                self.trigger_explosion(self.snake.positions[0])
                 self.game_state = GAME_OVER
                 self.sound_manager.play_crash_sound()
                 self.sound_manager.play_game_over_sound()
                 self.sound_manager.stop_background_music()  # Stop game music
                 self.sound_manager.start_game_over_music()  # Start game over music
+                
+            # Update explosion animation if active
+            if self.explosion_active:
+                self.update_explosion()
+                
+            # Update bombs
+            self.update_bombs()
                 
             # Check if food is eaten
             if self.snake.positions[0] == self.food.position:
@@ -199,6 +231,7 @@ class SnakeGame:
         if self.game_state == GAME_RUNNING:
             self.snake.draw(self.screen)
             self.food.draw(self.screen)
+            self.draw_bombs()
             self.draw_enhanced_score()
             
         elif self.game_state == GAME_PAUSED:
@@ -275,12 +308,125 @@ class SnakeGame:
         self.screen.blit(paused_text, paused_rect)
         self.screen.blit(continue_text, continue_rect)
         
+    def trigger_explosion(self, position):
+        """Trigger explosion effect at specified position"""
+        self.explosion_active = True
+        self.explosion_timer = 0
+        self.explosion_duration = 60  # 1 second at 60 FPS
+        self.explosion_position = position
+        self.explosion_particles = []
+        
+        # Create explosion particles
+        for _ in range(50):  # Create 50 particles
+            angle = random.uniform(0, 2 * math.pi)
+            speed = random.uniform(2, 8)
+            size = random.randint(2, 6)
+            lifetime = random.randint(20, 40)
+            
+            particle = {
+                'x': position[0],
+                'y': position[1],
+                'dx': math.cos(angle) * speed,
+                'dy': math.sin(angle) * speed,
+                'size': size,
+                'color': (random.randint(200, 255), random.randint(50, 150), random.randint(0, 50)),
+                'lifetime': lifetime,
+                'max_lifetime': lifetime
+            }
+            self.explosion_particles.append(particle)
+    
+    def update_explosion(self):
+        """Update explosion animation"""
+        self.explosion_timer += 1
+        
+        # Update particles
+        for particle in self.explosion_particles[:]:
+            particle['x'] += particle['dx']
+            particle['y'] += particle['dy']
+            particle['lifetime'] -= 1
+            
+            # Remove dead particles
+            if particle['lifetime'] <= 0:
+                self.explosion_particles.remove(particle)
+        
+        # End explosion if timer exceeds duration or no particles left
+        if self.explosion_timer >= self.explosion_duration or not self.explosion_particles:
+            self.explosion_active = False
+    
+    def draw_explosion(self):
+        """Draw explosion particles"""
+        for particle in self.explosion_particles:
+            # Calculate alpha based on lifetime
+            alpha = int(255 * (particle['lifetime'] / particle['max_lifetime']))
+            color = (*particle['color'], alpha)
+            
+            # Create particle surface with alpha
+            particle_surface = pygame.Surface((particle['size'], particle['size']), pygame.SRCALPHA)
+            pygame.draw.circle(particle_surface, color, 
+                             (particle['size']//2, particle['size']//2), 
+                             particle['size']//2)
+            
+            self.screen.blit(particle_surface, (particle['x'], particle['y']))
+    
+    def place_bomb(self):
+        """Place a bomb at snake's head position"""
+        if self.bombs_available > 0 and self.bomb_cooldown <= 0:
+            snake_head = self.snake.positions[0]
+            bomb = Bomb(snake_head[0], snake_head[1])
+            self.bombs.append(bomb)
+            self.bombs_available -= 1
+            self.bomb_cooldown = 30
+            self.sound_manager.play_bomb_place_sound()
+            print(f"💣 炸弹放置成功！剩余: {self.bombs_available}")
+    
+    def update_bombs(self):
+        """Update all active bombs"""
+        # Update bomb cooldown
+        if self.bomb_cooldown > 0:
+            self.bomb_cooldown -= 1
+        
+        # Update each bomb
+        for bomb in self.bombs[:]:
+            bomb.update()
+            
+            # Check if bomb explosion hits snake
+            if bomb.exploded and bomb.explosion_timer < 10:
+                for segment in self.snake.positions:
+                    if bomb.is_colliding(segment[0], segment[1], 5):
+                        # Snake hit by bomb explosion
+                        self.trigger_explosion(segment)
+                        self.game_state = GAME_OVER
+                        self.sound_manager.play_bomb_explosion_sound()
+                        self.sound_manager.play_game_over_sound()
+                        self.sound_manager.stop_background_music()
+                        self.sound_manager.start_game_over_music()
+                        break
+            
+            # Remove inactive bombs
+            if not bomb.active:
+                self.bombs.remove(bomb)
+                # Replenish bomb if it exploded naturally
+                if bomb.exploded and self.bombs_available < self.max_bombs:
+                    self.bombs_available += 1
+                    print(f"💣 炸弹补充！剩余炸弹: {self.bombs_available}")
+    
+    def draw_bombs(self):
+        """Draw all active bombs"""
+        for bomb in self.bombs:
+            bomb.draw(self.screen)
+    
+
+    
     def draw_enhanced_game_over_screen(self):
-        """Draw enhanced game over screen with effects"""
+        """Draw enhanced game over screen with explosion effect"""
         # Semi-transparent overlay
         overlay = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 180))
         self.screen.blit(overlay, (0, 0))
+        
+        # Draw explosion effect if active
+        if self.explosion_active:
+            self.draw_explosion()
         
         # Game over text with red glow
         game_over_text = self.big_font.render("GAME OVER", True, RED)
@@ -339,15 +485,32 @@ class SnakeGame:
     def run(self):
         """Main game loop with sound cleanup"""
         running = True
-        while running:
-            running = self.handle_events()
-            self.update()
-            self.draw()
-            # Only tick the clock based on snake speed if game is running
-            if self.game_state == GAME_RUNNING:
-                self.clock.tick(self.snake.speed)
-            else:
-                self.clock.tick(60)  # Default 60 FPS for menu and other states
+        try:
+            while running:
+                running = self.handle_events()
+                self.update()
+                self.draw()
+                # Only tick the clock based on snake speed if game is running
+                if self.game_state == GAME_RUNNING:
+                    self.clock.tick(self.snake.speed)
+                else:
+                    self.clock.tick(60)  # Default 60 FPS for menu and other states
+                    
+                # Check if snake exists and is valid
+                if self.game_state == GAME_RUNNING and (not hasattr(self, 'snake') or self.snake is None):
+                    print("⚠️  Snake object is None, returning to menu")
+                    self.game_state = GAME_MENU
+        except KeyboardInterrupt:
+            print("\n👋 Game interrupted by user, exiting gracefully...")
+            running = False
+        except Exception as e:
+            print(f"❌ Error in main game loop: {e}")
+            running = False
+        
+        # Cleanup sound resources
+        self.sound_manager.cleanup()
+        pygame.quit()
+        sys.exit()
         
         # Cleanup sound resources
         self.sound_manager.cleanup()

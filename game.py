@@ -10,26 +10,63 @@ from snake import Snake
 from food import Food
 from sound_manager import SoundManager
 from config import *
+from window_config import window_manager, create_game_window, toggle_fullscreen_mode, get_window_size
 
 class SnakeGame:
     """Enhanced Snake Game Main Class with visual effects and sound effects"""
     
     def __init__(self):
-        """Initialize enhanced game with sound effects"""
+        """Initialize enhanced game with sound effects and advanced window management"""
         pygame.init()
-        self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
-        pygame.display.set_caption(GAME_TITLE)
+        
+        # Use window manager for flexible display options
+        self.screen = create_game_window()
+        if not self.screen:
+            print("❌ 创建窗口失败，使用默认设置")
+            self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
+            
         self.clock = pygame.time.Clock()
-        self.font = pygame.font.Font(None, 36)
-        self.big_font = pygame.font.Font(None, 48)
+        
+        # Get actual screen size and adjust fonts accordingly
+        screen_width, screen_height = get_window_size()
+        
+        # Adjust font sizes based on actual screen size
+        self.font = pygame.font.Font(None, max(24, screen_height // 25))
+        self.big_font = pygame.font.Font(None, max(36, screen_height // 15))
+        self.score_font = pygame.font.Font(None, max(20, screen_height // 30))
         
         # Initialize sound manager
         self.sound_manager = SoundManager()
         
+        # Start menu music when game initializes
+        self.sound_manager.start_menu_music()
+        
         # Create background surface
         self.background_surface = self.create_enhanced_background()
         
-        self.reset_game()
+        # Initialize game state
+        self.game_state = GAME_MENU  # Start with menu state
+        self.snake = None
+        self.food = None
+        self.score = 0
+        
+    def toggle_fullscreen(self):
+        """Toggle between fullscreen and windowed mode using window manager"""
+        new_screen = toggle_fullscreen_mode()
+        if new_screen:
+            self.screen = new_screen
+            # Recreate background for new screen size
+            self.background_surface = self.create_enhanced_background()
+            
+            # Update font sizes for new resolution
+            screen_width, screen_height = get_window_size()
+            self.font = pygame.font.Font(None, max(24, screen_height // 25))
+            self.big_font = pygame.font.Font(None, max(36, screen_height // 15))
+            self.score_font = pygame.font.Font(None, max(20, screen_height // 30))
+            
+            print(f"🖥️  切换显示模式: {window_manager.current_mode}")
+        else:
+            print("❌ 切换显示模式失败，保持当前模式")
         
     def create_enhanced_background(self):
         """Create enhanced background with grid and gradient effects"""
@@ -52,6 +89,11 @@ class SnakeGame:
         background.blit(grid_surface, (0, 0))
         return background
         
+    def start_game(self):
+        """Start the game from menu"""
+        self.reset_game()
+        self.sound_manager.start_background_music()  # Start game music
+        
     def reset_game(self):
         """Reset game state"""
         self.snake = Snake(100, 100)
@@ -67,7 +109,19 @@ class SnakeGame:
                 return False
                 
             if event.type == pygame.KEYDOWN:
-                if self.game_state == GAME_RUNNING:
+                if self.game_state == GAME_MENU:
+                    if event.key == pygame.K_SPACE:
+                        self.start_game()
+                    elif event.key == pygame.K_f:
+                        self.toggle_fullscreen()
+                    elif event.key == pygame.K_m:
+                        self.sound_manager.toggle_background_music()
+                    elif event.key == pygame.K_n:
+                        self.sound_manager.switch_music_style()
+                    elif event.key == pygame.K_q:
+                        return False
+                        
+                elif self.game_state == GAME_RUNNING:
                     if event.key == pygame.K_UP:
                         self.snake.change_direction((0, -1))
                     elif event.key == pygame.K_DOWN:
@@ -79,6 +133,12 @@ class SnakeGame:
                     elif event.key == pygame.K_p:
                         self.game_state = GAME_PAUSED
                         self.sound_manager.play_pause_sound()
+                    elif event.key == pygame.K_f:
+                        self.toggle_fullscreen()
+                    elif event.key == pygame.K_m:
+                        self.sound_manager.toggle_background_music()
+                    elif event.key == pygame.K_n:
+                        self.sound_manager.switch_music_style()
                         
                 elif self.game_state == GAME_PAUSED:
                     if event.key == pygame.K_p:
@@ -87,6 +147,7 @@ class SnakeGame:
                         
                 elif self.game_state == GAME_OVER:
                     if event.key == pygame.K_r:
+                        self.sound_manager.stop_game_over_music()  # Stop game over music
                         self.reset_game()
                     elif event.key == pygame.K_q:
                         return False
@@ -103,6 +164,8 @@ class SnakeGame:
                 self.game_state = GAME_OVER
                 self.sound_manager.play_crash_sound()
                 self.sound_manager.play_game_over_sound()
+                self.sound_manager.stop_background_music()  # Stop game music
+                self.sound_manager.start_game_over_music()  # Start game over music
                 
             # Check if food is eaten
             if self.snake.positions[0] == self.food.position:
@@ -117,6 +180,10 @@ class SnakeGame:
                 
     def draw(self):
         """Draw enhanced game interface"""
+        # Check if screen is valid
+        if self.screen is None:
+            return
+            
         # Draw enhanced background
         self.screen.blit(self.background_surface, (0, 0))
         
@@ -133,6 +200,9 @@ class SnakeGame:
             
         elif self.game_state == GAME_OVER:
             self.draw_enhanced_game_over_screen()
+            
+        elif self.game_state == GAME_MENU:
+            self.draw_menu_screen()
             
         pygame.display.flip()
         
@@ -228,6 +298,38 @@ class SnakeGame:
         self.screen.blit(restart_text, restart_rect)
         self.screen.blit(quit_text, quit_rect)
         
+    def draw_menu_screen(self):
+        """Draw main menu screen"""
+        # Semi-transparent overlay
+        overlay = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 100))
+        self.screen.blit(overlay, (0, 0))
+        
+        # Title with glow effect
+        title_text = self.big_font.render("SNAKE GAME", True, GREEN)
+        start_text = self.font.render("Press SPACE to start", True, WHITE)
+        controls_text = self.font.render("Controls: Arrow keys to move, P to pause", True, LIGHT_GRAY)
+        music_text = self.font.render("M: Toggle music, N: Switch style, F: Fullscreen", True, LIGHT_GRAY)
+        quit_text = self.font.render("Press Q to quit", True, LIGHT_GRAY)
+        
+        title_rect = title_text.get_rect(center=(WINDOW_WIDTH//2, WINDOW_HEIGHT//2 - 100))
+        start_rect = start_text.get_rect(center=(WINDOW_WIDTH//2, WINDOW_HEIGHT//2 - 20))
+        controls_rect = controls_text.get_rect(center=(WINDOW_WIDTH//2, WINDOW_HEIGHT//2 + 30))
+        music_rect = music_text.get_rect(center=(WINDOW_WIDTH//2, WINDOW_HEIGHT//2 + 60))
+        quit_rect = quit_text.get_rect(center=(WINDOW_WIDTH//2, WINDOW_HEIGHT//2 + 110))
+        
+        # Glow effect for title
+        for i in range(3):
+            glow_surface = self.big_font.render("SNAKE GAME", True, (*GREEN, 100 - i*30))
+            glow_rect = glow_surface.get_rect(center=(WINDOW_WIDTH//2, WINDOW_HEIGHT//2 - 100))
+            self.screen.blit(glow_surface, glow_rect)
+        
+        self.screen.blit(title_text, title_rect)
+        self.screen.blit(start_text, start_rect)
+        self.screen.blit(controls_text, controls_rect)
+        self.screen.blit(music_text, music_rect)
+        self.screen.blit(quit_text, quit_rect)
+        
     def run(self):
         """Main game loop with sound cleanup"""
         running = True
@@ -235,7 +337,11 @@ class SnakeGame:
             running = self.handle_events()
             self.update()
             self.draw()
-            self.clock.tick(self.snake.speed)
+            # Only tick the clock based on snake speed if game is running
+            if self.game_state == GAME_RUNNING:
+                self.clock.tick(self.snake.speed)
+            else:
+                self.clock.tick(60)  # Default 60 FPS for menu and other states
         
         # Cleanup sound resources
         self.sound_manager.cleanup()

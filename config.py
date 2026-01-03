@@ -4,15 +4,19 @@ All game parameters are defined here for easy modification and maintenance
 """
 
 # Game window settings
-WINDOW_WIDTH = 800
-WINDOW_HEIGHT = 600
+WINDOW_WIDTH = 1200  # Increased from 800 for larger display
+WINDOW_HEIGHT = 900  # Increased from 600 for larger display
 GAME_TITLE = "Enhanced Snake Game"
 BACKGROUND_COLOR = (15, 15, 25)  # Dark blue-black gradient background
 
-# Game area settings
-GRID_SIZE = 20  # Size of each grid cell (pixels)
-GRID_WIDTH = 30  # Number of horizontal grid cells
-GRID_HEIGHT = 25  # Number of vertical grid cells
+# Full screen settings
+FULLSCREEN_MODE = False  # Set to True for fullscreen mode
+BORDERLESS_MODE = True   # Set to True for borderless window
+
+# Game area settings - Auto-calculated based on window size
+GRID_SIZE = 25  # Increased from 20 for better visibility
+GRID_WIDTH = 48  # Increased grid width
+GRID_HEIGHT = 36  # Increased grid height
 
 # Snake settings - Enhanced with gradient colors
 SNAKE_HEAD_COLOR = (0, 255, 100)  # Bright green for head
@@ -62,7 +66,14 @@ PAUSE_SOUND_DURATION = 50  # Duration for pause sound (ms)
 SPEED_UP_SOUND_FREQ = 1000  # Frequency for speed up sound (Hz)
 SPEED_UP_SOUND_DURATION = 80  # Duration for speed up sound (ms)
 
+# Background music settings
+BACKGROUND_MUSIC_ENABLED = True  # Enable/disable background music
+BACKGROUND_MUSIC_VOLUME = 0.2  # Background music volume (0.0 to 1.0)
+BACKGROUND_MUSIC_STYLE = "retro_arcade"  # Music style: retro_arcade, ambient, chiptune
+BACKGROUND_MUSIC_BPM = 128  # Beats per minute for background music (more moderate tempo)
+
 # Game states
 GAME_OVER = "game_over"
 GAME_RUNNING = "game_running"
 GAME_PAUSED = "game_paused"
+GAME_MENU = "game_menu"

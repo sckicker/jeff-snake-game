@@ -6,7 +6,7 @@ echo "🚀 准备上传到GitHub..."
 
 # 请替换为你的GitHub用户名和仓库名
 GITHUB_USERNAME="sckicker"
-REPO_NAME="jeff-snake-game"
+REPO_NAME="e-snake-game"
 
 # 添加远程仓库（使用HTTPS）
 git remote add origin https://github.com/$GITHUB_USERNAME/$REPO_NAME.git

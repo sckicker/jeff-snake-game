@@ -4,7 +4,13 @@ Provides interactive window mode selection
 """
 
 import pygame
-from window_config import window_manager
+import os
+import sys
+
+# Add parent directory to Python path for relative imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+from src.config.window_config import window_manager
 
 def show_launch_options():
     """Display launch options and let user choose window mode"""
@@ -81,6 +87,6 @@ if __name__ == "__main__":
         show_controls_reminder()
         
         # Import and start the game
-        from game import SnakeGame
+        from src.game.game import SnakeGame
         game = SnakeGame()
         game.run()

@@ -5,7 +5,13 @@ Handles all sound effects using pygame's sound capabilities
 
 import pygame
 import numpy as np
-from config import *
+import os
+import sys
+
+# Add parent directory to Python path for relative imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+from src.config.config import *
 
 class SoundManager:
     """Manages all game sound effects"""

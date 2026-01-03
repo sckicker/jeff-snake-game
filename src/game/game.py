@@ -6,11 +6,17 @@ Responsible for game logic, state management, enhanced user interface and sound 
 import pygame
 import sys
 import math
-from snake import Snake
-from food import Food
-from sound_manager import SoundManager
-from config import *
-from window_config import window_manager, create_game_window, toggle_fullscreen_mode, get_window_size
+import os
+import sys
+
+# Add parent directory to Python path for relative imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+from .snake import Snake
+from .food import Food
+from .sound_manager import SoundManager
+from src.config.config import *
+from src.config.window_config import window_manager, create_game_window, toggle_fullscreen_mode, get_window_size
 
 class SnakeGame:
     """Enhanced Snake Game Main Class with visual effects and sound effects"""

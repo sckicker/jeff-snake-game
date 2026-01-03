@@ -2,7 +2,13 @@
 Enhanced Snake Game Main Entry Point with Sound Effects
 """
 
-from game import SnakeGame
+import sys
+import os
+
+# Add src directory to Python path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+
+from src.game.game import SnakeGame
 
 def main():
     """Main function with launch options"""
@@ -45,7 +51,7 @@ def main():
     if choice == "2":
         # Import and run launch options
         try:
-            from launch_options import show_launch_options
+            from src.utils.launch_options import show_launch_options
             if not show_launch_options():
                 return
         except KeyboardInterrupt:

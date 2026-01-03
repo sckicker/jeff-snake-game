@@ -4,7 +4,13 @@ Provides flexible window sizing and display options
 """
 
 import pygame
-from config import *
+import os
+import sys
+
+# Add parent directory to Python path for relative imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+from .config import *
 
 class WindowManager:
     """Manages window display modes and screen configurations"""

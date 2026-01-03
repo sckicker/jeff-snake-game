@@ -6,7 +6,13 @@ Responsible for food generation and display with visual effects
 import pygame
 import random
 import math
-from config import *
+import os
+import sys
+
+# Add parent directory to Python path for relative imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+from src.config.config import *
 
 class Food:
     """Enhanced Food class with pulsing and glowing effects"""

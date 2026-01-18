@@ -65,6 +65,10 @@ class SoundManager:
             self.background_music = self.create_ambient_background_music()
             self.menu_music = self.create_ambient_menu_music()
             self.game_over_music = self.create_ambient_game_over_music()
+        elif BACKGROUND_MUSIC_STYLE == "kids":
+            self.background_music = self.create_kids_background_music()
+            self.menu_music = self.create_kids_menu_music()
+            self.game_over_music = self.create_kids_game_over_music()
         else:
             self.background_music = self.create_retro_background_music()
             self.menu_music = self.create_retro_menu_music()
@@ -617,7 +621,163 @@ class SoundManager:
         except Exception as e:
             print(f"❌ Warning: Could not create ambient game over music: {e}")
             return None
-    
+
+    def create_kids_background_music(self):
+        """Create fun, cheerful music for kids"""
+        if not self.enabled or not self.initialized or not BACKGROUND_MUSIC_ENABLED:
+            return None
+
+        try:
+            sample_rate = 22050
+            beat_duration = 60.0 / (BACKGROUND_MUSIC_BPM * 1.2)  # Slightly faster for kids
+
+            # Create 8-bar cheerful loop
+            total_duration = beat_duration * 32
+            samples = int(sample_rate * total_duration)
+
+            # C major pentatonic scale for happy, cheerful sound (no dissonance)
+            c_pentatonic = [523.25, 587.33, 659.25, 783.99, 880.00, 1046.50]  # C D E G A C (higher octave)
+
+            # Happy melody pattern (Mary Had a Little Lamb style)
+            melody_pattern = [2, 1, 0, 1, 2, 2, 2, 1, 1, 1, 2, 4, 4, 2, 1, 0]
+
+            music_pattern = np.zeros(samples)
+
+            for beat in range(16):
+                beat_start = int(beat * samples / 16)
+                beat_end = int((beat + 1) * samples / 16)
+
+                # Get melody note for this beat
+                melody_note = c_pentatonic[melody_pattern[beat]]
+
+                for i in range(beat_start, beat_end):
+                    t = (i - beat_start) / sample_rate
+
+                    # Simple, bright melody
+                    melody = 0.4 * np.sin(2 * np.pi * melody_note * t)
+                    # Add second harmonic for brightness
+                    melody += 0.15 * np.sin(2 * np.pi * melody_note * 2 * t)
+
+                    # Simple bouncy bass (root note pattern)
+                    bass_note = c_pentatonic[0] * 0.5  # Low C
+                    bass = 0.2 * np.sin(2 * np.pi * bass_note * t)
+
+                    # Simple rhythm accompaniment
+                    if int(t * 4) % 2 == 0:  # Quarter note rhythm
+                        rhythm = 0.1 * np.sin(2 * np.pi * c_pentatonic[2] * t)
+                    else:
+                        rhythm = 0.1 * np.sin(2 * np.pi * c_pentatonic[4] * t)
+
+                    # Combine with simple ADSR envelope
+                    attack = min(1.0, t * 20)
+                    decay = max(0.3, 1.0 - t * 2)
+                    envelope = attack * decay
+
+                    music_pattern[i] = (melody + bass + rhythm) * envelope
+
+            # Apply volume and convert to 16-bit
+            music_pattern = (music_pattern * 32767 * BACKGROUND_MUSIC_VOLUME * 0.9).astype(np.int16)
+            stereo_music = np.column_stack([music_pattern, music_pattern])
+
+            music_sound = pygame.sndarray.make_sound(stereo_music)
+            return music_sound
+
+        except Exception as e:
+            print(f"❌ Warning: Could not create kids background music: {e}")
+            return None
+
+    def create_kids_menu_music(self):
+        """Create friendly, inviting menu music for kids"""
+        if not self.enabled or not self.initialized or not BACKGROUND_MUSIC_ENABLED:
+            return None
+
+        try:
+            sample_rate = 22050
+            beat_duration = 60.0 / (BACKGROUND_MUSIC_BPM * 1.1)
+
+            # Create 4-bar friendly loop
+            total_duration = beat_duration * 16
+            samples = int(sample_rate * total_duration)
+
+            # C major pentatonic for happy sound
+            c_pentatonic = [523.25, 587.33, 659.25, 783.99, 880.00]  # C D E G A
+
+            # Simple ascending and descending pattern
+            melody_pattern = [0, 2, 4, 2, 0, 2, 4, 2]
+
+            music_pattern = np.zeros(samples)
+
+            for beat in range(8):
+                beat_start = int(beat * samples / 8)
+                beat_end = int((beat + 1) * samples / 8)
+
+                melody_note = c_pentatonic[melody_pattern[beat]]
+
+                for i in range(beat_start, beat_end):
+                    t = (i - beat_start) / sample_rate
+
+                    # Bright, cheerful tone
+                    tone = 0.5 * np.sin(2 * np.pi * melody_note * t)
+                    tone += 0.2 * np.sin(2 * np.pi * melody_note * 2 * t)
+
+                    # Gentle envelope
+                    envelope = np.exp(-t * 3)
+                    music_pattern[i] = tone * envelope
+
+            # Apply volume
+            music_pattern = (music_pattern * 32767 * BACKGROUND_MUSIC_VOLUME * 0.8).astype(np.int16)
+            stereo_music = np.column_stack([music_pattern, music_pattern])
+
+            music_sound = pygame.sndarray.make_sound(stereo_music)
+            return music_sound
+
+        except Exception as e:
+            print(f"❌ Warning: Could not create kids menu music: {e}")
+            return None
+
+    def create_kids_game_over_music(self):
+        """Create encouraging, non-sad game over music for kids"""
+        if not self.enabled or not self.initialized or not BACKGROUND_MUSIC_ENABLED:
+            return None
+
+        try:
+            sample_rate = 22050
+            duration = 3.0  # 3 seconds
+
+            samples = int(sample_rate * duration)
+
+            # C major arpeggio (encouraging, not sad)
+            c_arpeggio = [523.25, 659.25, 783.99, 1046.50]  # C E G C
+
+            music_pattern = np.zeros(samples)
+
+            # Play ascending arpeggio (encouraging)
+            for note_idx, freq in enumerate(c_arpeggio):
+                note_start = int(note_idx * samples / len(c_arpeggio))
+                note_end = int((note_idx + 1) * samples / len(c_arpeggio))
+
+                for i in range(note_start, note_end):
+                    t = (i - note_start) / sample_rate
+
+                    # Gentle, encouraging tone
+                    tone = 0.4 * np.sin(2 * np.pi * freq * t)
+                    tone += 0.15 * np.sin(2 * np.pi * freq * 2 * t)
+
+                    # Gentle decay
+                    envelope = np.exp(-t * 2)
+                    music_pattern[i] = tone * envelope
+
+            # Apply volume
+            music_pattern = (music_pattern * 32767 * BACKGROUND_MUSIC_VOLUME * 0.7).astype(np.int16)
+            stereo_music = np.column_stack([music_pattern, music_pattern])
+
+            music_sound = pygame.sndarray.make_sound(stereo_music)
+            return music_sound
+
+        except Exception as e:
+            print(f"❌ Warning: Could not create kids game over music: {e}")
+            return None
+
     def create_retro_background_music(self):
         """Create professional retro arcade-style background music"""
         if not self.enabled or not self.initialized or not BACKGROUND_MUSIC_ENABLED:
@@ -1194,8 +1354,8 @@ class SoundManager:
         global BACKGROUND_MUSIC_STYLE
         
         if style is None:
-            # Cycle through styles
-            styles = ["retro_arcade", "chiptune", "ambient"]
+            # Cycle through styles (now includes kids!)
+            styles = ["retro_arcade", "chiptune", "ambient", "kids"]
             current_idx = styles.index(BACKGROUND_MUSIC_STYLE)
             BACKGROUND_MUSIC_STYLE = styles[(current_idx + 1) % len(styles)]
         else:
@@ -1206,7 +1366,7 @@ class SoundManager:
 
         # Stop current music
         self.stop_background_music()
-        
+
         # Create new music for all phases based on style
         if BACKGROUND_MUSIC_STYLE == "chiptune":
             self.background_music = self.create_chiptune_background_music()
@@ -1216,6 +1376,10 @@ class SoundManager:
             self.background_music = self.create_ambient_background_music()
             self.menu_music = self.create_ambient_menu_music()
             self.game_over_music = self.create_ambient_game_over_music()
+        elif BACKGROUND_MUSIC_STYLE == "kids":
+            self.background_music = self.create_kids_background_music()
+            self.menu_music = self.create_kids_menu_music()
+            self.game_over_music = self.create_kids_game_over_music()
         else:
             self.background_music = self.create_retro_background_music()
             self.menu_music = self.create_retro_menu_music()

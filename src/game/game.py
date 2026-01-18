@@ -22,6 +22,7 @@ from src.config.window_config import window_manager, create_game_window, toggle_
 from src.config.themes import ThemeManager
 from src.core.difficulty import DifficultyManager, DifficultyLevel
 from src.effects.floating_text import FloatingTextManager
+from src.effects.particle_system import ParticleSystem
 from src.ui.hud_renderer import HUDRenderer
 
 class SnakeGame:
@@ -65,6 +66,9 @@ class SnakeGame:
         # Initialize HUD renderer
         self.hud_renderer = HUDRenderer(self.theme_manager)
 
+        # Initialize particle system for trail effects
+        self.particle_system = ParticleSystem()
+
         # Start menu music when game initializes
         self.sound_manager.start_menu_music()
 
@@ -86,6 +90,12 @@ class SnakeGame:
         self.bomb_cooldown = 0
         self.max_bombs = 3
         self.explosion_active = False
+
+        # Screen shake effects
+        self.screen_shake_intensity = 0
+        self.screen_shake_duration = 0
+        self.screen_offset_x = 0
+        self.screen_offset_y = 0
         
     def toggle_fullscreen(self):
         """Toggle between fullscreen and windowed mode using window manager"""
@@ -166,6 +176,9 @@ class SnakeGame:
         # Clear power-ups and floating text
         self.powerup_manager.clear()
         self.floating_text_manager.clear()
+
+        # Clear particle system
+        self.particle_system.clear()
         
     def handle_events(self):
         """Handle game events with sound effects"""
@@ -210,6 +223,12 @@ class SnakeGame:
                     elif event.key == pygame.K_p:
                         self.game_state = GAME_PAUSED
                         self.sound_manager.play_pause_sound()
+                    elif event.key == pygame.K_q:
+                        # Return to menu when Q is pressed during game
+                        self.game_state = GAME_MENU
+                        self.sound_manager.stop_background_music()
+                        self.sound_manager.start_menu_music()
+                        print("🏠 返回主菜单")
                     elif event.key == pygame.K_f:
                         self.toggle_fullscreen()
                     elif event.key == pygame.K_m:
@@ -242,6 +261,22 @@ class SnakeGame:
         if self.game_state == GAME_RUNNING:
             self.snake.move()
 
+            # Emit trail particles from snake tail
+            if len(self.snake.positions) > 0:
+                # Get snake color from theme
+                snake_color = self.theme_manager.current_theme.snake_body_color
+                # Emit from tail position
+                tail_x, tail_y = self.snake.positions[-1]
+                self.particle_system.emit_trail_particle(
+                    tail_x + GRID_SIZE // 2,
+                    tail_y + GRID_SIZE // 2,
+                    snake_color,
+                    intensity=0.5
+                )
+
+            # Update particle system
+            self.particle_system.update()
+
             # Update snake expression timer
             self.snake.update_expression()
 
@@ -267,6 +302,7 @@ class SnakeGame:
                 else:
                     # Trigger explosion effect at snake head position
                     self.trigger_explosion(self.snake.positions[0])
+                    self.trigger_screen_shake(intensity=15, duration=20)  # Strong shake on death
                     self.game_state = GAME_OVER
                     self.sound_manager.play_crash_sound()
                     self.sound_manager.play_game_over_sound()
@@ -276,7 +312,10 @@ class SnakeGame:
             # Update explosion animation if active
             if self.explosion_active:
                 self.update_explosion()
-                
+
+            # Update screen shake effect
+            self.update_screen_shake()
+
             # Update bombs
             self.update_bombs()
 
@@ -359,17 +398,19 @@ class SnakeGame:
         if self.screen is None:
             return
             
-        # Draw enhanced background
-        self.screen.blit(self.background_surface, (0, 0))
-        
-        # Draw game area border with glow effect
+        # Draw enhanced background with screen shake offset
+        self.screen.blit(self.background_surface, (self.screen_offset_x, self.screen_offset_y))
+
+        # Draw game area border with glow effect (also affected by shake)
         self.draw_glowing_border()
         
         if self.game_state == GAME_RUNNING:
-            self.snake.draw(self.screen)
-            self.food.draw(self.screen)
+            # Draw in order: particles -> bombs -> power-ups -> snake -> food (food on top)
+            self.particle_system.draw(self.screen)  # Draw particles first (background layer)
             self.draw_bombs()
             self.powerup_manager.draw(self.screen)
+            self.snake.draw(self.screen)
+            self.food.draw(self.screen)  # Food drawn last so it's never hidden
             self.draw_enhanced_score()
             self.powerup_manager.draw_active_effects(self.screen)
             self.floating_text_manager.draw(self.screen)
@@ -515,7 +556,30 @@ class SnakeGame:
         # End explosion if timer exceeds duration or no particles left
         if self.explosion_timer >= self.explosion_duration or not self.explosion_particles:
             self.explosion_active = False
-    
+
+    def trigger_screen_shake(self, intensity=10, duration=15):
+        """
+        Trigger screen shake effect
+        Args:
+            intensity: Maximum pixel offset for shake
+            duration: Number of frames to shake
+        """
+        self.screen_shake_intensity = intensity
+        self.screen_shake_duration = duration
+
+    def update_screen_shake(self):
+        """Update screen shake effect"""
+        if self.screen_shake_duration > 0:
+            # Random offset based on remaining intensity
+            current_intensity = self.screen_shake_intensity * (self.screen_shake_duration / 15)
+            self.screen_offset_x = random.randint(-int(current_intensity), int(current_intensity))
+            self.screen_offset_y = random.randint(-int(current_intensity), int(current_intensity))
+            self.screen_shake_duration -= 1
+        else:
+            # Reset offset when shake ends
+            self.screen_offset_x = 0
+            self.screen_offset_y = 0
+
     def draw_explosion(self):
         """Draw explosion particles"""
         for particle in self.explosion_particles:
@@ -551,7 +615,11 @@ class SnakeGame:
         # Update each bomb
         for bomb in self.bombs[:]:
             bomb.update()
-            
+
+            # Trigger screen shake when bomb first explodes
+            if bomb.exploded and bomb.explosion_timer == 1:
+                self.trigger_screen_shake(intensity=12, duration=18)
+
             # Check if bomb explosion hits snake
             if bomb.exploded and bomb.explosion_timer < 10:
                 for segment in self.snake.positions:
@@ -705,13 +773,15 @@ class SnakeGame:
         header2 = header_font.render("【Game】", True, theme.accent_color)
         self.screen.blit(header2, (col2_x, controls_y))
         pause_text = control_font.render("P - Pause", True, theme.text_primary)
-        bomb_text = control_font.render("B - Bomb", True, theme.text_primary)
+        bomb_text = control_font.render("B - Use Bomb", True, theme.text_primary)
+        q_text = control_font.render("Q - Menu", True, theme.text_primary)
         self.screen.blit(pause_text, (col2_x, controls_y + 30))
-        self.screen.blit(bomb_text, (col2_x, controls_y + 55))
-        # Show bomb count if available
-        if hasattr(self, 'bombs_available') and self.bombs_available > 0:
-            bomb_count_text = control_font.render(f"   ({self.bombs_available} left)", True, theme.text_secondary)
-            self.screen.blit(bomb_count_text, (col2_x, controls_y + 75))
+        self.screen.blit(bomb_text, (col2_x, controls_y + 50))
+        self.screen.blit(q_text, (col2_x, controls_y + 70))
+        # Show bomb count
+        bomb_count_text = control_font.render(f"💣 x{self.bombs_available if hasattr(self, 'bombs_available') else 3}",
+                                              True, theme.accent_color)
+        self.screen.blit(bomb_count_text, (col2_x, controls_y + 90))
 
         # Column 3: Menu Controls
         header3 = header_font.render("【Menu】", True, theme.accent_color)

@@ -102,3 +102,16 @@ class Food:
             sparkle_x = center_x + 8 * math.cos(self.pulse_timer * 0.2)
             sparkle_y = center_y + 8 * math.sin(self.pulse_timer * 0.2)
             pygame.draw.circle(screen, WHITE, (int(sparkle_x), int(sparkle_y)), 2)
+
+        # Draw label below food (like power-ups)
+        font = pygame.font.Font(None, 20)
+        label_text = font.render("🍎 FOOD +10", True, (255, 255, 255))
+
+        # Semi-transparent background for label
+        label_rect = label_text.get_rect(center=(center_x, center_y + GRID_SIZE // 2 + 15))
+        bg_surface = pygame.Surface((label_rect.width + 8, label_rect.height + 4), pygame.SRCALPHA)
+        bg_surface.fill((255, 100, 100, 220))  # Red background
+        screen.blit(bg_surface, (label_rect.x - 4, label_rect.y - 2))
+
+        # Draw text
+        screen.blit(label_text, label_rect)

@@ -24,7 +24,7 @@ def show_launch_options():
     print("3️⃣  全屏模式")
     print("4️⃣  自定义分辨率")
     print("5️⃣  启动游戏 (默认窗口模式)")
-    print("")
+    print(""s
     
     while True:
         choice = input("请输入选项 (1-5): ").strip()

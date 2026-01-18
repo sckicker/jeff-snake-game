@@ -39,7 +39,23 @@ class SoundManager:
         # Bomb sound effects
         self.bomb_place_sound = self.create_bomb_place_sound()
         self.bomb_explosion_sound = self.create_bomb_explosion_sound()
-        
+
+        # Power-up collection sounds (3 types)
+        self.powerup_slow_sound = self.create_powerup_sound('slow_potion')
+        self.powerup_shield_sound = self.create_powerup_sound('shield')
+        self.powerup_double_sound = self.create_powerup_sound('double_score')
+
+        # Theme switching sound
+        self.theme_switch_sound = self.create_theme_switch_sound()
+
+        # Combo sounds (3 levels)
+        self.combo_2x_sound = self.create_combo_sound(2)
+        self.combo_3x_sound = self.create_combo_sound(3)
+        self.combo_5x_sound = self.create_combo_sound(5)
+
+        # Shield break sound
+        self.shield_break_sound = self.create_shield_break_sound()
+
         # Create background music for different game phases
         if BACKGROUND_MUSIC_STYLE == "chiptune":
             self.background_music = self.create_chiptune_background_music()
@@ -56,6 +72,7 @@ class SoundManager:
         
         self.music_channel = None
         self.current_music = "menu"  # Track current music phase
+        self.current_music_style = BACKGROUND_MUSIC_STYLE  # Track current music style
         
     def create_chiptune_background_music(self):
         """Create modern chiptune-style background music"""
@@ -852,7 +869,190 @@ class SoundManager:
         except Exception as e:
             print(f"❌ Warning: Could not create bomb explosion sound: {e}")
             return None
-    
+
+    def create_powerup_sound(self, powerup_type):
+        """
+        Create power-up collection sound effect
+        Args:
+            powerup_type: 'slow_potion', 'shield', or 'double_score'
+        """
+        if not self.enabled or not self.initialized:
+            return None
+
+        try:
+            sample_rate = 22050
+            note_duration = 150  # Each note 150ms
+
+            # Define frequency sequences for each power-up type
+            if powerup_type == 'slow_potion':
+                # Descending scale (calming effect)
+                frequencies = [600, 480, 360]
+            elif powerup_type == 'shield':
+                # Ascending scale (protective, rising effect)
+                frequencies = [800, 960, 1200]
+            elif powerup_type == 'double_score':
+                # Flickering pattern (exciting)
+                frequencies = [1000, 1500, 2000, 1500]
+            else:
+                frequencies = [440, 550, 660]
+
+            # Create sound for each note
+            total_samples = 0
+            note_samples = []
+
+            for freq in frequencies:
+                samples = int(sample_rate * note_duration / 1000)
+                t = np.linspace(0, note_duration / 1000, samples, False)
+
+                # Generate tone with harmonics
+                wave = np.sin(2 * np.pi * freq * t)
+                wave += 0.3 * np.sin(2 * np.pi * freq * 2 * t)
+                wave += 0.15 * np.sin(2 * np.pi * freq * 3 * t)
+
+                # Simple ADSR envelope
+                attack = int(samples * 0.1)
+                decay = int(samples * 0.2)
+                release = int(samples * 0.3)
+
+                envelope = np.ones(samples)
+                # Attack
+                envelope[:attack] = np.linspace(0, 1, attack)
+                # Release
+                envelope[-release:] = np.linspace(1, 0, release)
+
+                wave *= envelope
+                note_samples.append(wave)
+                total_samples += samples
+
+            # Concatenate all notes
+            full_wave = np.concatenate(note_samples)
+            full_wave = (full_wave * 32767 * 0.4).astype(np.int16)
+            stereo_wave = np.column_stack([full_wave, full_wave])
+
+            sound = pygame.sndarray.make_sound(stereo_wave)
+            return sound
+
+        except Exception as e:
+            print(f"❌ Warning: Could not create power-up sound: {e}")
+            return None
+
+    def create_theme_switch_sound(self):
+        """Create theme switching sound (C major arpeggio)"""
+        if not self.enabled or not self.initialized:
+            return None
+
+        try:
+            sample_rate = 22050
+            note_duration = 80  # Quick 80ms per note
+
+            # C major arpeggio: C-E-G-C
+            frequencies = [261.63, 329.63, 392.00, 523.25]
+
+            note_samples = []
+            for freq in frequencies:
+                samples = int(sample_rate * note_duration / 1000)
+                t = np.linspace(0, note_duration / 1000, samples, False)
+
+                # Bell-like tone
+                wave = np.sin(2 * np.pi * freq * t)
+                wave += 0.5 * np.sin(2 * np.pi * freq * 2 * t)
+
+                # Quick envelope
+                envelope = np.exp(-t * 12)
+                wave *= envelope
+                note_samples.append(wave)
+
+            full_wave = np.concatenate(note_samples)
+            full_wave = (full_wave * 32767 * 0.35).astype(np.int16)
+            stereo_wave = np.column_stack([full_wave, full_wave])
+
+            sound = pygame.sndarray.make_sound(stereo_wave)
+            return sound
+
+        except Exception as e:
+            print(f"❌ Warning: Could not create theme switch sound: {e}")
+            return None
+
+    def create_combo_sound(self, combo_level):
+        """
+        Create combo sound effect
+        Args:
+            combo_level: 2, 3, or 5+ for different levels
+        """
+        if not self.enabled or not self.initialized:
+            return None
+
+        try:
+            sample_rate = 22050
+            duration = 200  # 0.2 seconds
+            samples = int(sample_rate * duration / 1000)
+            t = np.linspace(0, duration / 1000, samples, False)
+
+            # Higher pitch for higher combos
+            if combo_level == 2:
+                freq = 600
+            elif combo_level == 3:
+                freq = 800
+            else:  # 5+
+                freq = 1000
+
+            # Generate tone with excitement (more harmonics)
+            wave = np.sin(2 * np.pi * freq * t)
+            wave += 0.4 * np.sin(2 * np.pi * freq * 2 * t)
+            wave += 0.2 * np.sin(2 * np.pi * freq * 3 * t)
+
+            # Pulsing envelope for excitement
+            envelope = np.exp(-t * 8)
+            pulse = 1 + 0.3 * np.sin(2 * np.pi * 10 * t)  # 10 Hz pulse
+            wave *= envelope * pulse
+
+            wave = (wave * 32767 * 0.4).astype(np.int16)
+            stereo_wave = np.column_stack([wave, wave])
+
+            sound = pygame.sndarray.make_sound(stereo_wave)
+            return sound
+
+        except Exception as e:
+            print(f"❌ Warning: Could not create combo sound: {e}")
+            return None
+
+    def create_shield_break_sound(self):
+        """Create shield breaking sound (glass shatter effect)"""
+        if not self.enabled or not self.initialized:
+            return None
+
+        try:
+            sample_rate = 22050
+            duration = 400  # 0.4 seconds
+            samples = int(sample_rate * duration / 1000)
+            t = np.linspace(0, duration / 1000, samples, False)
+
+            # High frequency descending (breaking glass)
+            start_freq = 2000
+            end_freq = 400
+            freq_sweep = start_freq + (end_freq - start_freq) * t / (duration / 1000)
+
+            # Create sweep with noise
+            wave = np.sin(2 * np.pi * freq_sweep * t)
+
+            # Add high-frequency noise for "shatter" effect
+            noise = 0.3 * (np.random.random(samples) - 0.5)
+            wave += noise
+
+            # Sharp attack, quick decay
+            envelope = np.exp(-t * 10)
+            wave *= envelope
+
+            wave = (wave * 32767 * 0.5).astype(np.int16)
+            stereo_wave = np.column_stack([wave, wave])
+
+            sound = pygame.sndarray.make_sound(stereo_wave)
+            return sound
+
+        except Exception as e:
+            print(f"❌ Warning: Could not create shield break sound: {e}")
+            return None
+
     def play_bomb_place_sound(self):
         """Play bomb placement sound effect"""
         if self.bomb_place_sound:
@@ -864,7 +1064,52 @@ class SoundManager:
         if self.bomb_explosion_sound:
             self.bomb_explosion_sound.play()
             print("💥 Playing bomb explosion sound")
-    
+
+    def play_powerup_sound(self, powerup_type):
+        """
+        Play power-up collection sound
+        Args:
+            powerup_type: 'slow_potion', 'shield', or 'double_score'
+        """
+        sound_map = {
+            'slow_potion': self.powerup_slow_sound,
+            'shield': self.powerup_shield_sound,
+            'double_score': self.powerup_double_sound
+        }
+
+        sound = sound_map.get(powerup_type)
+        if sound:
+            sound.play()
+            print(f"🎁 Playing {powerup_type} power-up sound")
+
+    def play_theme_switch_sound(self):
+        """Play theme switching sound effect"""
+        if self.theme_switch_sound:
+            self.theme_switch_sound.play()
+            print("🎨 Playing theme switch sound")
+
+    def play_combo_sound(self, combo_level):
+        """
+        Play combo sound effect
+        Args:
+            combo_level: 2, 3, or 5+ for different combo levels
+        """
+        if combo_level == 2 and self.combo_2x_sound:
+            self.combo_2x_sound.play()
+            print("🔥 Playing 2x combo sound")
+        elif combo_level == 3 and self.combo_3x_sound:
+            self.combo_3x_sound.play()
+            print("🔥🔥 Playing 3x combo sound")
+        elif combo_level >= 5 and self.combo_5x_sound:
+            self.combo_5x_sound.play()
+            print("🔥🔥🔥 Playing 5x+ combo sound")
+
+    def play_shield_break_sound(self):
+        """Play shield breaking sound effect"""
+        if self.shield_break_sound:
+            self.shield_break_sound.play()
+            print("💔 Playing shield break sound")
+
     def start_background_music(self):
         """Start playing background music in loop"""
         if self.background_music and BACKGROUND_MUSIC_ENABLED and self.enabled:
@@ -955,7 +1200,10 @@ class SoundManager:
             BACKGROUND_MUSIC_STYLE = styles[(current_idx + 1) % len(styles)]
         else:
             BACKGROUND_MUSIC_STYLE = style
-        
+
+        # Update instance attribute
+        self.current_music_style = BACKGROUND_MUSIC_STYLE
+
         # Stop current music
         self.stop_background_music()
         

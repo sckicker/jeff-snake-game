@@ -1,0 +1,1 @@
+"""Visual effects and animations"""

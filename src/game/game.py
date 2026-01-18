@@ -16,8 +16,13 @@ from .snake import Snake
 from .food import Food
 from .sound_manager import SoundManager
 from .bomb import Bomb
+from .powerups import PowerUpManager
 from src.config.config import *
 from src.config.window_config import window_manager, create_game_window, toggle_fullscreen_mode, get_window_size
+from src.config.themes import ThemeManager
+from src.core.difficulty import DifficultyManager, DifficultyLevel
+from src.effects.floating_text import FloatingTextManager
+from src.ui.hud_renderer import HUDRenderer
 
 class SnakeGame:
     """Enhanced Snake Game Main Class with visual effects and sound effects"""
@@ -44,18 +49,35 @@ class SnakeGame:
         
         # Initialize sound manager
         self.sound_manager = SoundManager()
-        
+
+        # Initialize theme manager
+        self.theme_manager = ThemeManager()
+
+        # Initialize difficulty manager
+        self.difficulty_manager = DifficultyManager()
+
+        # Initialize power-up manager
+        self.powerup_manager = PowerUpManager()
+
+        # Initialize floating text manager
+        self.floating_text_manager = FloatingTextManager()
+
+        # Initialize HUD renderer
+        self.hud_renderer = HUDRenderer(self.theme_manager)
+
         # Start menu music when game initializes
         self.sound_manager.start_menu_music()
-        
+
         # Create background surface
         self.background_surface = self.create_enhanced_background()
-        
+
         # Initialize game state
         self.game_state = GAME_MENU  # Start with menu state
         self.snake = None
         self.food = None
         self.score = 0
+        self.score_multiplier = 1.0  # For double score power-up
+        self.shield_active = False    # For shield power-up
         self.walls = []
         self.bombs = []
         self.particles = []
@@ -84,23 +106,27 @@ class SnakeGame:
             print("❌ 切换显示模式失败，保持当前模式")
         
     def create_enhanced_background(self):
-        """Create enhanced background with grid and gradient effects"""
+        """Create enhanced background with grid and gradient effects using current theme"""
         background = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT))
-        
-        # Create gradient background
+        theme = self.theme_manager.current_theme
+
+        # Create gradient background using theme colors
         for y in range(WINDOW_HEIGHT):
-            # Dark blue to black gradient
-            color_value = int(25 - (y / WINDOW_HEIGHT) * 15)
-            color = (color_value, color_value, color_value + 5)
+            # Gradient from primary to secondary
+            progress = y / WINDOW_HEIGHT
+            r = int(theme.background_primary[0] * (1 - progress) + theme.background_secondary[0] * progress)
+            g = int(theme.background_primary[1] * (1 - progress) + theme.background_secondary[1] * progress)
+            b = int(theme.background_primary[2] * (1 - progress) + theme.background_secondary[2] * progress)
+            color = (r, g, b)
             pygame.draw.line(background, color, (0, y), (WINDOW_WIDTH, y))
-        
-        # Add subtle grid pattern
+
+        # Add subtle grid pattern using theme grid color
         grid_surface = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)
         for x in range(0, WINDOW_WIDTH, GRID_SIZE):
-            pygame.draw.line(grid_surface, (*DARK_GRAY, GRID_ALPHA), (x, 0), (x, WINDOW_HEIGHT))
+            pygame.draw.line(grid_surface, (*theme.grid_color, theme.grid_alpha), (x, 0), (x, WINDOW_HEIGHT))
         for y in range(0, WINDOW_HEIGHT, GRID_SIZE):
-            pygame.draw.line(grid_surface, (*DARK_GRAY, GRID_ALPHA), (0, y), (WINDOW_WIDTH, y))
-        
+            pygame.draw.line(grid_surface, (*theme.grid_color, theme.grid_alpha), (0, y), (WINDOW_WIDTH, y))
+
         background.blit(grid_surface, (0, 0))
         return background
         
@@ -112,22 +138,34 @@ class SnakeGame:
         
     def reset_game(self):
         """Reset game to initial state"""
+        # Get difficulty settings
+        difficulty = self.difficulty_manager.get_settings()
+
+        # Create snake with difficulty-based speed
         self.snake = Snake(100, 100)
+        self.snake.speed = difficulty.initial_speed
+
         self.food = Food()
         self.score = 0
+        self.score_multiplier = 1.0
+        self.shield_active = False
         self.game_state = GAME_MENU
         self.paused = False
-        
+
         # Reset explosion effect
         self.explosion_active = False
         self.explosion_particles = []
         self.explosion_timer = 0
         self.explosion_duration = 60  # 1 second at 60 FPS
-        
-        # Reset bomb system
+
+        # Reset bomb system based on difficulty
         self.bombs = []
         self.bomb_cooldown = 0
-        self.bombs_available = self.max_bombs
+        self.bombs_available = self.max_bombs if difficulty.bomb_enabled else 0
+
+        # Clear power-ups and floating text
+        self.powerup_manager.clear()
+        self.floating_text_manager.clear()
         
     def handle_events(self):
         """Handle game events with sound effects"""
@@ -145,6 +183,16 @@ class SnakeGame:
                         self.sound_manager.toggle_background_music()
                     elif event.key == pygame.K_n:
                         self.sound_manager.switch_music_style()
+                    elif event.key == pygame.K_t:
+                        # Toggle theme
+                        theme_name = self.theme_manager.cycle_theme()
+                        self.background_surface = self.create_enhanced_background()
+                        self.sound_manager.play_theme_switch_sound()  # Play theme switch sound
+                        print(f"🎨 主题切换到: {theme_name}")
+                    elif event.key == pygame.K_d:
+                        # Cycle difficulty
+                        difficulty_name = self.difficulty_manager.cycle_difficulty()
+                        print(f"⚙️ 难度设置: {difficulty_name}")
                     elif event.key == pygame.K_q:
                         return False
                         
@@ -168,6 +216,12 @@ class SnakeGame:
                         self.sound_manager.toggle_background_music()
                     elif event.key == pygame.K_n:
                         self.sound_manager.switch_music_style()
+                    elif event.key == pygame.K_t:
+                        # Toggle theme during game
+                        theme_name = self.theme_manager.cycle_theme()
+                        self.background_surface = self.create_enhanced_background()
+                        self.sound_manager.play_theme_switch_sound()  # Play theme switch sound
+                        print(f"🎨 主题切换到: {theme_name}")
                         
                 elif self.game_state == GAME_PAUSED:
                     if event.key == pygame.K_p:
@@ -187,16 +241,37 @@ class SnakeGame:
         """Update game state with sound effects"""
         if self.game_state == GAME_RUNNING:
             self.snake.move()
-            
-            # Check collisions
-            if self.snake.check_self_collision() or self.snake.check_wall_collision():
-                # Trigger explosion effect at snake head position
-                self.trigger_explosion(self.snake.positions[0])
-                self.game_state = GAME_OVER
-                self.sound_manager.play_crash_sound()
-                self.sound_manager.play_game_over_sound()
-                self.sound_manager.stop_background_music()  # Stop game music
-                self.sound_manager.start_game_over_music()  # Start game over music
+
+            # Update snake expression timer
+            self.snake.update_expression()
+
+            # Get difficulty settings
+            difficulty = self.difficulty_manager.get_settings()
+
+            # Check collisions with wall wrapping support
+            wall_collision = self.snake.check_wall_collision(difficulty.wall_wrap_around)
+            self_collision = self.snake.check_self_collision()
+
+            if self_collision or wall_collision:
+                # Check if shield is active
+                if self.shield_active:
+                    # Shield protects once
+                    self.shield_active = False
+                    self.sound_manager.play_shield_break_sound()  # Play shield break sound
+                    self.floating_text_manager.add_message(
+                        "Shield Saved You!",
+                        WINDOW_WIDTH // 2,
+                        WINDOW_HEIGHT // 2,
+                        color=(255, 215, 0)
+                    )
+                else:
+                    # Trigger explosion effect at snake head position
+                    self.trigger_explosion(self.snake.positions[0])
+                    self.game_state = GAME_OVER
+                    self.sound_manager.play_crash_sound()
+                    self.sound_manager.play_game_over_sound()
+                    self.sound_manager.stop_background_music()  # Stop game music
+                    self.sound_manager.start_game_over_music()  # Start game over music
                 
             # Update explosion animation if active
             if self.explosion_active:
@@ -204,17 +279,79 @@ class SnakeGame:
                 
             # Update bombs
             self.update_bombs()
-                
+
+            # Update power-ups
+            self.powerup_manager.update()
+
+            # Check for power-up collection
+            collected_powerup = self.powerup_manager.check_collection(
+                self.snake.positions[0], self
+            )
+            if collected_powerup:
+                # Play power-up collection sound
+                from .powerups import PowerUpType
+                powerup_type_map = {
+                    PowerUpType.SLOW_POTION: 'slow_potion',
+                    PowerUpType.SHIELD: 'shield',
+                    PowerUpType.DOUBLE_SCORE: 'double_score'
+                }
+                self.sound_manager.play_powerup_sound(powerup_type_map.get(collected_powerup.type, 'slow_potion'))
+
+                # Show floating text for power-up
+                self.floating_text_manager.add_message(
+                    f"{collected_powerup.name}!",
+                    collected_powerup.x + GRID_SIZE // 2,
+                    collected_powerup.y + GRID_SIZE // 2,
+                    color=collected_powerup.color
+                )
+
+            # Remove expired power-up effects
+            self.powerup_manager.remove_effects(self)
+
+            # Update floating text
+            self.floating_text_manager.update()
+
             # Check if food is eaten
             if self.snake.positions[0] == self.food.position:
                 self.snake.grow()
-                self.score += SCORE_PER_FOOD
+
+                # Play combo sound based on combo count
+                if self.snake.combo_count == 2:
+                    self.sound_manager.play_combo_sound(2)
+                elif self.snake.combo_count == 3:
+                    self.sound_manager.play_combo_sound(3)
+                elif self.snake.combo_count >= 5:
+                    self.sound_manager.play_combo_sound(5)
+
+                # Apply score multiplier
+                points = int(SCORE_PER_FOOD * self.score_multiplier * difficulty.score_multiplier)
+                self.score += points
+
+                # Show floating score text
+                food_x, food_y = self.food.position
+                self.floating_text_manager.add_score_text(
+                    points,
+                    food_x + GRID_SIZE // 2,
+                    food_y + GRID_SIZE // 2
+                )
+
                 self.food.respawn(self.snake.positions)
                 self.sound_manager.play_eat_sound()
-                
+
                 # Play speed up sound if speed increased
                 if self.snake.speed > SNAKE_INITIAL_SPEED:
                     self.sound_manager.play_speed_up_sound()
+
+                # Update last eat time for combo tracking
+                self._last_eat_time = pygame.time.get_ticks()
+            else:
+                # Reset combo if not eating consecutively
+                # (reset after not eating for 2 seconds)
+                if not hasattr(self, '_last_eat_time'):
+                    self._last_eat_time = pygame.time.get_ticks()
+                if pygame.time.get_ticks() - self._last_eat_time > 2000:
+                    self.snake.reset_combo()
+                    self._last_eat_time = pygame.time.get_ticks()
                 
     def draw(self):
         """Draw enhanced game interface"""
@@ -232,7 +369,10 @@ class SnakeGame:
             self.snake.draw(self.screen)
             self.food.draw(self.screen)
             self.draw_bombs()
+            self.powerup_manager.draw(self.screen)
             self.draw_enhanced_score()
+            self.powerup_manager.draw_active_effects(self.screen)
+            self.floating_text_manager.draw(self.screen)
             
         elif self.game_state == GAME_PAUSED:
             self.draw_enhanced_paused_screen()
@@ -258,32 +398,55 @@ class SnakeGame:
         pygame.draw.rect(self.screen, CYAN, (0, 0, WINDOW_WIDTH, WINDOW_HEIGHT), 2)
         
     def draw_enhanced_score(self):
-        """Draw enhanced score and speed with background panels"""
-        # Score panel
-        score_text = self.font.render(f"Score: {self.score}", True, WHITE)
-        speed_text = self.font.render(f"Speed: {self.snake.speed}", True, WHITE)
-        
-        # Draw semi-transparent background for text
-        score_bg = pygame.Surface((150, 80), pygame.SRCALPHA)
-        score_bg.fill((0, 0, 0, 128))  # Semi-transparent black
-        self.screen.blit(score_bg, (10, 10))
-        
-        self.screen.blit(score_text, (20, 20))
-        self.screen.blit(speed_text, (20, 60))
-        
-        # Draw speed bar
-        speed_percentage = self.snake.speed / MAX_SPEED
-        bar_width = 100
-        bar_height = 8
-        bar_x = 20
-        bar_y = 90
-        
-        # Speed bar background
-        pygame.draw.rect(self.screen, DARK_GRAY, (bar_x, bar_y, bar_width, bar_height))
-        # Speed bar fill
-        pygame.draw.rect(self.screen, GREEN, (bar_x, bar_y, int(bar_width * speed_percentage), bar_height))
-        # Speed bar border
-        pygame.draw.rect(self.screen, WHITE, (bar_x, bar_y, bar_width, bar_height), 1)
+        """Draw enhanced HUD with all game information"""
+        # Prepare game state data for HUD
+        difficulty_settings = self.difficulty_manager.get_settings()
+        current_time = pygame.time.get_ticks()
+
+        # Prepare active power-ups data
+        active_powerups = []
+        for effect_type, end_time, original_value in self.powerup_manager.active_effects:
+            # Get power-up details
+            from .powerups import PowerUpType
+            if effect_type == PowerUpType.SLOW_POTION:
+                color = (100, 149, 237)
+                name = "Slow Potion"
+                duration = 5000
+            elif effect_type == PowerUpType.SHIELD:
+                color = (255, 215, 0)
+                name = "Shield"
+                duration = 3000
+            elif effect_type == PowerUpType.DOUBLE_SCORE:
+                color = (255, 20, 147)
+                name = "2x Score"
+                duration = 8000
+
+            active_powerups.append({
+                'type': effect_type,
+                'end_time': end_time,
+                'color': color,
+                'name': name,
+                'duration': duration
+            })
+
+        game_state = {
+            'score': self.score,
+            'speed': self.snake.speed,
+            'max_speed': difficulty_settings.max_speed,
+            'difficulty': self.difficulty_manager.get_difficulty_name(),
+            'music_style': self.sound_manager.current_music_style.replace('_', ' ').title(),
+            'active_powerups': active_powerups,
+            'bomb_count': self.bombs_available,
+            'bomb_cooldown_remaining': self.bomb_cooldown,
+            'bomb_cooldown_total': 3000,  # 3 seconds
+        }
+
+        # Draw all HUD panels
+        self.hud_renderer.draw_all_panels(self.screen, game_state)
+
+        # Draw combo indicator if applicable
+        if hasattr(self.snake, 'combo_count'):
+            self.hud_renderer.draw_combo_indicator(self.screen, self.snake.combo_count)
         
     def draw_enhanced_paused_screen(self):
         """Draw enhanced paused screen with overlay"""
@@ -451,35 +614,141 @@ class SnakeGame:
         self.screen.blit(quit_text, quit_rect)
         
     def draw_menu_screen(self):
-        """Draw main menu screen"""
+        """Draw redesigned modular menu screen with organized panels"""
+        theme = self.theme_manager.current_theme
+
         # Semi-transparent overlay
         overlay = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 100))
         self.screen.blit(overlay, (0, 0))
-        
-        # Title with glow effect
-        title_text = self.big_font.render("SNAKE GAME", True, GREEN)
-        start_text = self.font.render("Press SPACE to start", True, WHITE)
-        controls_text = self.font.render("Controls: Arrow keys to move, P to pause", True, LIGHT_GRAY)
-        music_text = self.font.render("M: Toggle music, N: Switch style, F: Fullscreen", True, LIGHT_GRAY)
-        quit_text = self.font.render("Press Q to quit", True, LIGHT_GRAY)
-        
-        title_rect = title_text.get_rect(center=(WINDOW_WIDTH//2, WINDOW_HEIGHT//2 - 100))
-        start_rect = start_text.get_rect(center=(WINDOW_WIDTH//2, WINDOW_HEIGHT//2 - 20))
-        controls_rect = controls_text.get_rect(center=(WINDOW_WIDTH//2, WINDOW_HEIGHT//2 + 30))
-        music_rect = music_text.get_rect(center=(WINDOW_WIDTH//2, WINDOW_HEIGHT//2 + 60))
-        quit_rect = quit_text.get_rect(center=(WINDOW_WIDTH//2, WINDOW_HEIGHT//2 + 110))
-        
-        # Glow effect for title
-        for i in range(3):
-            glow_surface = self.big_font.render("SNAKE GAME", True, (*GREEN, 100 - i*30))
-            glow_rect = glow_surface.get_rect(center=(WINDOW_WIDTH//2, WINDOW_HEIGHT//2 - 100))
-            self.screen.blit(glow_surface, glow_rect)
-        
+
+        y_pos = 150
+
+        # ===== TITLE SECTION =====
+        title_font = pygame.font.Font(None, 64)
+        subtitle_font = pygame.font.Font(None, 28)
+
+        # Title with enhanced glow effect
+        title_text = title_font.render("🐍 SNAKE GAME 🐍", True, theme.accent_color)
+        subtitle_text = subtitle_font.render("Enhanced Edition v3.0", True, theme.text_secondary)
+
+        title_rect = title_text.get_rect(center=(WINDOW_WIDTH // 2, y_pos))
+        subtitle_rect = subtitle_text.get_rect(center=(WINDOW_WIDTH // 2, y_pos + 50))
+
+        # Multi-layer glow for title
+        for i in range(4):
+            glow = title_font.render("🐍 SNAKE GAME 🐍", True, (*theme.accent_color, 80 - i * 20))
+            glow_rect = glow.get_rect(center=(WINDOW_WIDTH // 2, y_pos))
+            self.screen.blit(glow, glow_rect)
+
         self.screen.blit(title_text, title_rect)
+        self.screen.blit(subtitle_text, subtitle_rect)
+
+        y_pos += 100
+
+        # ===== SETTINGS PANEL =====
+        panel_width = 600
+        panel_x = (WINDOW_WIDTH - panel_width) // 2
+
+        # Settings background panel
+        settings_panel = pygame.Surface((panel_width, 100), pygame.SRCALPHA)
+        settings_panel.fill((*theme.background_secondary, 200))
+        pygame.draw.rect(settings_panel, theme.accent_color, (0, 0, panel_width, 100), 2)
+        self.screen.blit(settings_panel, (panel_x, y_pos))
+
+        # Current settings with emoji icons
+        theme_name = self.theme_manager.current_theme.name
+        difficulty_name = self.difficulty_manager.get_difficulty_name()
+        music_style = self.sound_manager.current_music_style.replace('_', ' ').title()
+
+        settings_y = y_pos + 15
+        setting_font = pygame.font.Font(None, 26)
+
+        theme_text = setting_font.render(f"🎨 Theme: {theme_name}", True, theme.text_primary)
+        diff_text = setting_font.render(f"⚙️  Difficulty: {difficulty_name}", True, theme.text_primary)
+        music_text = setting_font.render(f"🎵 Music: {music_style}", True, theme.text_primary)
+
+        self.screen.blit(theme_text, (panel_x + 20, settings_y))
+        self.screen.blit(diff_text, (panel_x + 20, settings_y + 30))
+        self.screen.blit(music_text, (panel_x + 20, settings_y + 60))
+
+        y_pos += 130
+
+        # ===== SEPARATOR LINE =====
+        pygame.draw.line(self.screen, theme.accent_color,
+                        (panel_x, y_pos), (panel_x + panel_width, y_pos), 2)
+        y_pos += 20
+
+        # ===== 3-COLUMN CONTROLS SECTION =====
+        controls_panel = pygame.Surface((panel_width, 120), pygame.SRCALPHA)
+        controls_panel.fill((*theme.background_secondary, 200))
+        pygame.draw.rect(controls_panel, theme.accent_color, (0, 0, panel_width, 120), 2)
+        self.screen.blit(controls_panel, (panel_x, y_pos))
+
+        control_font = pygame.font.Font(None, 20)
+        header_font = pygame.font.Font(None, 24)
+
+        # Column positions
+        col_width = panel_width // 3
+        col1_x = panel_x + 15
+        col2_x = panel_x + col_width + 15
+        col3_x = panel_x + col_width * 2 + 15
+        controls_y = y_pos + 10
+
+        # Column 1: Movement Controls
+        header1 = header_font.render("【Movement】", True, theme.accent_color)
+        self.screen.blit(header1, (col1_x, controls_y))
+        move_text = control_font.render("↑↓←→  Move", True, theme.text_primary)
+        self.screen.blit(move_text, (col1_x, controls_y + 30))
+
+        # Column 2: Game Controls
+        header2 = header_font.render("【Game】", True, theme.accent_color)
+        self.screen.blit(header2, (col2_x, controls_y))
+        pause_text = control_font.render("P - Pause", True, theme.text_primary)
+        bomb_text = control_font.render("B - Bomb", True, theme.text_primary)
+        self.screen.blit(pause_text, (col2_x, controls_y + 30))
+        self.screen.blit(bomb_text, (col2_x, controls_y + 55))
+        # Show bomb count if available
+        if hasattr(self, 'bombs_available') and self.bombs_available > 0:
+            bomb_count_text = control_font.render(f"   ({self.bombs_available} left)", True, theme.text_secondary)
+            self.screen.blit(bomb_count_text, (col2_x, controls_y + 75))
+
+        # Column 3: Menu Controls
+        header3 = header_font.render("【Menu】", True, theme.accent_color)
+        self.screen.blit(header3, (col3_x, controls_y))
+        d_text = control_font.render("D - Difficulty", True, theme.text_primary)
+        t_text = control_font.render("T - Theme", True, theme.text_primary)
+        n_text = control_font.render("N - Music", True, theme.text_primary)
+        self.screen.blit(d_text, (col3_x, controls_y + 30))
+        self.screen.blit(t_text, (col3_x, controls_y + 55))
+        self.screen.blit(n_text, (col3_x, controls_y + 80))
+
+        y_pos += 140
+
+        # ===== SEPARATOR LINE =====
+        pygame.draw.line(self.screen, theme.accent_color,
+                        (panel_x, y_pos), (panel_x + panel_width, y_pos), 2)
+        y_pos += 30
+
+        # ===== START BUTTON with PULSING ANIMATION =====
+        pulse = 1 + 0.15 * math.sin(pygame.time.get_ticks() * 0.005)
+        start_font = pygame.font.Font(None, int(42 * pulse))
+        start_text = start_font.render(">>> Press SPACE to Start <<<", True, theme.accent_color)
+        start_rect = start_text.get_rect(center=(WINDOW_WIDTH // 2, y_pos))
+
+        # Glow for start text
+        for i in range(3):
+            glow = start_font.render(">>> Press SPACE to Start <<<",
+                                    True, (*theme.accent_color, 60 - i * 20))
+            glow_rect = glow.get_rect(center=(WINDOW_WIDTH // 2, y_pos))
+            self.screen.blit(glow, glow_rect)
+
         self.screen.blit(start_text, start_rect)
-        self.screen.blit(controls_text, controls_rect)
-        self.screen.blit(music_text, music_rect)
+
+        # Quit hint at bottom
+        quit_font = pygame.font.Font(None, 22)
+        quit_text = quit_font.render("Press Q to Quit | F for Fullscreen", True, theme.text_secondary)
+        quit_rect = quit_text.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT - 30))
         self.screen.blit(quit_text, quit_rect)
         
     def run(self):
